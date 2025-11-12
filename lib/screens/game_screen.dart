@@ -25,7 +25,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     _gameState = GameState.initial();
 
     _moveAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 500),
+      duration: const Duration(milliseconds: 300),
       vsync: this,
     );
 
@@ -57,8 +57,10 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
 
       if (move.from.row != -1) {
         // Делаем ход с анимацией
-        _animatingFrom = move.from;
-        _animatingTo = move.to;
+        setState(() {
+          _animatingFrom = move.from;
+          _animatingTo = move.to;
+        });
         _moveAnimationController.forward(from: 0).then((_) {
           setState(() {
             _gameState = GameLogic.makeMove(_gameState, move);
@@ -94,6 +96,22 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       _animatingFrom = null;
       _animatingTo = null;
     });
+  }
+
+  // Проверяем, заблокирована ли шашка из-за обязательного взятия
+  bool _isPieceBlocked(Piece piece) {
+    if (_gameState.winner != null) return true;
+    if (piece.color != _gameState.currentPlayer) return true;
+
+    final allMoves = GameLogic.getAllPossibleMoves(_gameState);
+    final hasCaptureMoves = allMoves.any((m) => m.isCapture);
+
+    if (!hasCaptureMoves) return false;
+
+    final pieceMoves = GameLogic.getPossibleMovesForPiece(_gameState, piece);
+    final pieceHasCaptures = pieceMoves.any((m) => m.isCapture);
+
+    return !pieceHasCaptures;
   }
 
   @override
@@ -594,6 +612,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     final canMove = _gameState.currentPlayer == piece.color &&
                     _gameState.winner == null;
     final isSelected = _gameState.selectedPosition == piece.position;
+    final isBlocked = _isPieceBlocked(piece);
 
     return Positioned(
       left: piece.position.col * cellSize,
@@ -603,13 +622,24 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         child: AnimatedScale(
           scale: isSelected ? 1.1 : 1.0,
           duration: const Duration(milliseconds: 200),
-          child: _buildPieceVisual(piece, cellSize, isSelected: isSelected),
+          child: _buildPieceVisual(
+            piece,
+            cellSize,
+            isSelected: isSelected,
+            isBlocked: isBlocked,
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildPieceVisual(Piece piece, double cellSize, {bool isSelected = false, bool isAnimating = false}) {
+  Widget _buildPieceVisual(
+    Piece piece,
+    double cellSize, {
+    bool isSelected = false,
+    bool isAnimating = false,
+    bool isBlocked = false,
+  }) {
     return Container(
       width: cellSize,
       height: cellSize,
@@ -646,12 +676,20 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                 blurRadius: 30,
                 spreadRadius: 3,
               ),
+            if (isBlocked && !isSelected)
+              BoxShadow(
+                color: const Color(0xFFff4444).withValues(alpha: 0.5),
+                blurRadius: 20,
+                spreadRadius: 2,
+              ),
           ],
           border: Border.all(
-            color: piece.color == PieceColor.white
-                ? Colors.white.withValues(alpha: 0.5)
-                : const Color(0xFF555555),
-            width: 3,
+            color: isBlocked && !isSelected
+                ? const Color(0xFFff4444).withValues(alpha: 0.6)
+                : piece.color == PieceColor.white
+                    ? Colors.white.withValues(alpha: 0.5)
+                    : const Color(0xFF555555),
+            width: isBlocked && !isSelected ? 3 : 3,
           ),
         ),
         child: piece.isKing
@@ -681,8 +719,8 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     return AnimatedBuilder(
       animation: _moveAnimationController,
       builder: (context, child) {
-        // Используем более плавную кривую с bounce эффектом
-        final t = Curves.easeOutCubic.transform(_moveAnimationController.value);
+        // Используем линейную интерполяцию для плавного движения
+        final t = Curves.easeInOut.transform(_moveAnimationController.value);
         final fromCol = _animatingFrom!.col;
         final fromRow = _animatingFrom!.row;
         final toCol = _animatingTo!.col;
@@ -691,16 +729,10 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         final currentCol = fromCol + (toCol - fromCol) * t;
         final currentRow = fromRow + (toRow - fromRow) * t;
 
-        // Добавляем небольшой подъем в середине движения (параболическая траектория)
-        final lift = (1 - (2 * t - 1) * (2 * t - 1)) * 0.3;
-
         return Positioned(
           left: currentCol * cellSize,
-          top: currentRow * cellSize - lift * cellSize,
-          child: Transform.scale(
-            scale: 1.0 + lift * 0.3,
-            child: _buildPieceVisual(piece, cellSize, isAnimating: true),
-          ),
+          top: currentRow * cellSize,
+          child: _buildPieceVisual(piece, cellSize, isAnimating: true),
         );
       },
     );
