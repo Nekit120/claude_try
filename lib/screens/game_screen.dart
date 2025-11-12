@@ -73,8 +73,8 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         setState(() {
           _gameState = GameLogic.selectPiece(_gameState, position);
         });
-      } else {
-        // Снимаем выделение
+      } else if (!_gameState.mustContinueCapture) {
+        // Снимаем выделение (только если не в процессе обязательного взятия)
         setState(() {
           _gameState = _gameState.copyWith(
             clearSelectedPosition: true,
@@ -98,20 +98,19 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     });
   }
 
-  // Проверяем, заблокирована ли шашка из-за обязательного взятия
-  bool _isPieceBlocked(Piece piece) {
-    if (_gameState.winner != null) return true;
-    if (piece.color != _gameState.currentPlayer) return true;
+  // Проверяем, можно ли эту вражескую шашку побить
+  bool _canBeCaptured(Piece piece) {
+    if (_gameState.winner != null) return false;
+    if (piece.color == _gameState.currentPlayer) return false;
 
-    final allMoves = GameLogic.getAllPossibleMoves(_gameState);
-    final hasCaptureMoves = allMoves.any((m) => m.isCapture);
+    // Проверяем все доступные ходы
+    for (final move in _gameState.availableMoves) {
+      if (move.capturedPositions.contains(piece.position)) {
+        return true;
+      }
+    }
 
-    if (!hasCaptureMoves) return false;
-
-    final pieceMoves = GameLogic.getPossibleMovesForPiece(_gameState, piece);
-    final pieceHasCaptures = pieceMoves.any((m) => m.isCapture);
-
-    return !pieceHasCaptures;
+    return false;
   }
 
   @override
@@ -612,24 +611,21 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     final canMove = _gameState.currentPlayer == piece.color &&
                     _gameState.winner == null;
     final isSelected = _gameState.selectedPosition == piece.position;
-    final isBlocked = _isPieceBlocked(piece);
+    final canBeCaptured = _canBeCaptured(piece);
 
     return Positioned(
       left: piece.position.col * cellSize,
       top: piece.position.row * cellSize,
-      child: IgnorePointer(
-        ignoring: isBlocked,
-        child: GestureDetector(
-          onTap: canMove ? () => _handleCellTap(piece.position) : null,
-          child: AnimatedScale(
-            scale: isSelected ? 1.1 : 1.0,
-            duration: const Duration(milliseconds: 200),
-            child: _buildPieceVisual(
-              piece,
-              cellSize,
-              isSelected: isSelected,
-              isBlocked: isBlocked,
-            ),
+      child: GestureDetector(
+        onTap: canMove ? () => _handleCellTap(piece.position) : null,
+        child: AnimatedScale(
+          scale: isSelected ? 1.1 : 1.0,
+          duration: const Duration(milliseconds: 200),
+          child: _buildPieceVisual(
+            piece,
+            cellSize,
+            isSelected: isSelected,
+            canBeCaptured: canBeCaptured,
           ),
         ),
       ),
@@ -641,7 +637,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     double cellSize, {
     bool isSelected = false,
     bool isAnimating = false,
-    bool isBlocked = false,
+    bool canBeCaptured = false,
   }) {
     return Container(
       width: cellSize,
@@ -679,20 +675,20 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                 blurRadius: 30,
                 spreadRadius: 3,
               ),
-            if (isBlocked && !isSelected)
+            if (canBeCaptured)
               BoxShadow(
-                color: const Color(0xFFff4444).withValues(alpha: 0.5),
-                blurRadius: 20,
+                color: const Color(0xFFff4444).withValues(alpha: 0.4),
+                blurRadius: 18,
                 spreadRadius: 2,
               ),
           ],
           border: Border.all(
-            color: isBlocked && !isSelected
-                ? const Color(0xFFff4444).withValues(alpha: 0.6)
+            color: canBeCaptured
+                ? const Color(0xFFff4444).withValues(alpha: 0.5)
                 : piece.color == PieceColor.white
                     ? Colors.white.withValues(alpha: 0.5)
                     : const Color(0xFF555555),
-            width: isBlocked && !isSelected ? 3 : 3,
+            width: 3,
           ),
         ),
         child: piece.isKing

@@ -49,12 +49,12 @@ class GameLogic {
   static List<Move> getPossibleMovesForPiece(GameState state, Piece piece) {
     final moves = <Move>[];
 
-    // Сначала проверяем ходы с захватом
-    final captureMoves = _getCaptureMoves(state, piece, []);
+    // Сначала проверяем ходы с захватом (только одношаговые)
+    final captureMoves = _getSingleStepCaptureMoves(state, piece, state.capturedInTurn);
     moves.addAll(captureMoves);
 
-    // Если нет ходов с захватом, проверяем обычные ходы
-    if (captureMoves.isEmpty) {
+    // Если нет ходов с захватом и мы не в процессе взятия, проверяем обычные ходы
+    if (captureMoves.isEmpty && !state.mustContinueCapture) {
       moves.addAll(_getSimpleMoves(state, piece));
     }
 
@@ -86,8 +86,8 @@ class GameLogic {
     return moves;
   }
 
-  // Получить ходы с захватом (с рекурсией для множественного захвата)
-  static List<Move> _getCaptureMoves(
+  // Получить одношаговые ходы с захватом (без рекурсии)
+  static List<Move> _getSingleStepCaptureMoves(
     GameState state,
     Piece piece,
     List<Position> alreadyCaptured,
@@ -116,37 +116,15 @@ class GameLogic {
           enemyPiece.color != piece.color &&
           !alreadyCaptured.contains(enemyPos) &&
           landPiece == null) {
-        final newCaptured = [...alreadyCaptured, enemyPos];
         final makesKing = _shouldBecomeKing(piece, landPos);
 
-        // Создаём временное состояние для проверки продолжения захвата
-        final tempPiece = piece.copyWith(
-          position: landPos,
-          isKing: piece.isKing || makesKing,
-        );
-
-        // Проверяем, можем ли продолжить захват
-        final furtherCaptures = _getCaptureMoves(state, tempPiece, newCaptured);
-
-        if (furtherCaptures.isEmpty) {
-          // Это конечный ход
-          moves.add(Move(
-            from: piece.position,
-            to: landPos,
-            capturedPositions: newCaptured,
-            makesKing: makesKing,
-          ));
-        } else {
-          // Добавляем все продолжения
-          for (final further in furtherCaptures) {
-            moves.add(Move(
-              from: piece.position,
-              to: further.to,
-              capturedPositions: further.capturedPositions,
-              makesKing: further.makesKing,
-            ));
-          }
-        }
+        // Возвращаем только одношаговый ход (не рекурсивно)
+        moves.add(Move(
+          from: piece.position,
+          to: landPos,
+          capturedPositions: [enemyPos],
+          makesKing: makesKing,
+        ));
       }
     }
 
@@ -193,7 +171,39 @@ class GameLogic {
     final newBlackCaptures = state.blackCaptures +
         (piece.color == PieceColor.black ? move.capturedPositions.length : 0);
 
-    // Меняем игрока
+    // Обновляем список побитых в текущем ходу
+    final allCapturedInTurn = [...state.capturedInTurn, ...move.capturedPositions];
+
+    // Если это был ход с захватом, проверяем возможность продолжения
+    if (move.isCapture) {
+      // Создаём временное состояние для проверки продолжения
+      final tempState = state.copyWith(
+        board: newBoard,
+        capturedInTurn: allCapturedInTurn,
+      );
+
+      // Проверяем, можем ли продолжить захват
+      final continuationMoves = _getSingleStepCaptureMoves(
+        tempState,
+        newPiece,
+        allCapturedInTurn,
+      );
+
+      if (continuationMoves.isNotEmpty) {
+        // Нужно продолжить захват - не меняем игрока
+        return state.copyWith(
+          board: newBoard,
+          whiteCaptures: newWhiteCaptures,
+          blackCaptures: newBlackCaptures,
+          selectedPosition: move.to,
+          availableMoves: continuationMoves,
+          capturedInTurn: allCapturedInTurn,
+          mustContinueCapture: true,
+        );
+      }
+    }
+
+    // Ход завершён - меняем игрока
     final nextPlayer = state.currentPlayer == PieceColor.white
         ? PieceColor.black
         : PieceColor.white;
@@ -205,6 +215,8 @@ class GameLogic {
       blackCaptures: newBlackCaptures,
       clearSelectedPosition: true,
       availableMoves: [],
+      clearCapturedInTurn: true,
+      mustContinueCapture: false,
     );
 
     // Проверяем победу
@@ -242,6 +254,11 @@ class GameLogic {
         clearSelectedPosition: true,
         availableMoves: [],
       );
+    }
+
+    // Если мы в процессе множественного взятия, можно выбрать только текущую шашку
+    if (state.mustContinueCapture && state.selectedPosition != position) {
+      return state; // Не даём выбрать другую шашку
     }
 
     final moves = getPossibleMovesForPiece(state, piece);

@@ -10,6 +10,8 @@ class GameState {
   final Position? selectedPosition;
   final List<Move> availableMoves;
   final String? winner;
+  final List<Position> capturedInTurn; // Шашки, побитые в текущем ходу
+  final bool mustContinueCapture; // Нужно ли продолжить взятие
 
   GameState({
     required this.board,
@@ -19,6 +21,8 @@ class GameState {
     this.selectedPosition,
     this.availableMoves = const [],
     this.winner,
+    this.capturedInTurn = const [],
+    this.mustContinueCapture = false,
   });
 
   factory GameState.initial() {
@@ -60,6 +64,9 @@ class GameState {
     List<Move>? availableMoves,
     String? winner,
     bool clearWinner = false,
+    List<Position>? capturedInTurn,
+    bool clearCapturedInTurn = false,
+    bool? mustContinueCapture,
   }) {
     return GameState(
       board: board ?? Map.from(this.board),
@@ -70,6 +77,8 @@ class GameState {
           clearSelectedPosition ? null : (selectedPosition ?? this.selectedPosition),
       availableMoves: availableMoves ?? this.availableMoves,
       winner: clearWinner ? null : (winner ?? this.winner),
+      capturedInTurn: clearCapturedInTurn ? const [] : (capturedInTurn ?? this.capturedInTurn),
+      mustContinueCapture: mustContinueCapture ?? this.mustContinueCapture,
     );
   }
 
