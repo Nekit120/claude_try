@@ -12,9 +12,10 @@ class GameScreen extends StatefulWidget {
   State<GameScreen> createState() => _GameScreenState();
 }
 
-class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateMixin {
+class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   late GameState _gameState;
-  late AnimationController _animationController;
+  late AnimationController _moveAnimationController;
+  late AnimationController _pulseAnimationController;
   Position? _animatingFrom;
   Position? _animatingTo;
 
@@ -22,51 +23,67 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   void initState() {
     super.initState();
     _gameState = GameState.initial();
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 400),
+
+    _moveAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 500),
       vsync: this,
     );
+
+    _pulseAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 1000),
+      vsync: this,
+    )..repeat(reverse: true);
   }
 
   @override
   void dispose() {
-    _animationController.dispose();
+    _moveAnimationController.dispose();
+    _pulseAnimationController.dispose();
     super.dispose();
   }
 
-  void _handleDragStart(Position position) {
+  void _handleCellTap(Position position) {
     if (_gameState.winner != null) return;
 
-    setState(() {
-      _gameState = GameLogic.selectPiece(_gameState, position);
-    });
-  }
+    final piece = _gameState.getPieceAt(position);
 
-  void _handleDragEnd(Position from, Position to) {
-    if (_gameState.winner != null) return;
+    // Если уже выбрана шашка
+    if (_gameState.selectedPosition != null) {
+      // Проверяем, можем ли сделать ход на эту клетку
+      final move = _gameState.availableMoves.firstWhere(
+        (m) => m.to == position,
+        orElse: () => Move(from: Position(-1, -1), to: Position(-1, -1)),
+      );
 
-    final move = _gameState.availableMoves.firstWhere(
-      (m) => m.from == from && m.to == to,
-      orElse: () => Move(from: Position(-1, -1), to: Position(-1, -1)),
-    );
-
-    if (move.from.row != -1) {
-      // Делаем ход с анимацией
-      _animatingFrom = move.from;
-      _animatingTo = move.to;
-      _animationController.forward(from: 0).then((_) {
-        setState(() {
-          _gameState = GameLogic.makeMove(_gameState, move);
-          _animatingFrom = null;
-          _animatingTo = null;
+      if (move.from.row != -1) {
+        // Делаем ход с анимацией
+        _animatingFrom = move.from;
+        _animatingTo = move.to;
+        _moveAnimationController.forward(from: 0).then((_) {
+          setState(() {
+            _gameState = GameLogic.makeMove(_gameState, move);
+            _animatingFrom = null;
+            _animatingTo = null;
+          });
         });
-      });
-    } else {
+      } else if (piece != null && piece.color == _gameState.currentPlayer) {
+        // Выбираем другую шашку
+        setState(() {
+          _gameState = GameLogic.selectPiece(_gameState, position);
+        });
+      } else {
+        // Снимаем выделение
+        setState(() {
+          _gameState = _gameState.copyWith(
+            clearSelectedPosition: true,
+            availableMoves: [],
+          );
+        });
+      }
+    } else if (piece != null && piece.color == _gameState.currentPlayer) {
+      // Выбираем шашку
       setState(() {
-        _gameState = _gameState.copyWith(
-          clearSelectedPosition: true,
-          availableMoves: [],
-        );
+        _gameState = GameLogic.selectPiece(_gameState, position);
       });
     }
   }
@@ -88,9 +105,9 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
+              const Color(0xFF0a0e27),
               const Color(0xFF1a1a2e),
               const Color(0xFF16213e),
-              const Color(0xFF0f3460),
             ],
           ),
         ),
@@ -125,26 +142,56 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.circle,
-            color: Colors.white.withValues(alpha: 0.9),
-            size: 16,
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: [
+                  const Color(0xFF00f5ff),
+                  const Color(0xFF00a8ff),
+                ],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF00f5ff).withValues(alpha: 0.5),
+                  blurRadius: 15,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: const Icon(Icons.circle, color: Colors.white, size: 12),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 16),
           const Text(
             'Русские шашки',
             style: TextStyle(
               color: Colors.white,
               fontSize: 28,
               fontWeight: FontWeight.bold,
-              letterSpacing: 1.2,
+              letterSpacing: 1.5,
             ),
           ),
-          const SizedBox(width: 12),
-          Icon(
-            Icons.circle,
-            color: Colors.black.withValues(alpha: 0.9),
-            size: 16,
+          const SizedBox(width: 16),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: [
+                  const Color(0xFF1a1a1a),
+                  const Color(0xFF000000),
+                ],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.white.withValues(alpha: 0.3),
+                  blurRadius: 15,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: const Icon(Icons.circle, color: Colors.black87, size: 12),
           ),
         ],
       ),
@@ -157,15 +204,15 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            const Color(0xFF00d2ff),
-            const Color(0xFF3a7bd5),
+            const Color(0xFF00f5ff),
+            const Color(0xFF00a8ff),
           ],
         ),
         borderRadius: BorderRadius.circular(30),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF00d2ff).withValues(alpha: 0.5),
-            blurRadius: 20,
+            color: const Color(0xFF00f5ff).withValues(alpha: 0.6),
+            blurRadius: 25,
             offset: const Offset(0, 8),
           ),
         ],
@@ -184,9 +231,9 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
               border: Border.all(color: Colors.white, width: 3),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.3),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
+                  color: Colors.black.withValues(alpha: 0.5),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
                 ),
               ],
             ),
@@ -200,7 +247,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
               color: Colors.white,
               fontSize: 20,
               fontWeight: FontWeight.bold,
-              letterSpacing: 0.5,
+              letterSpacing: 0.8,
             ),
           ),
         ],
@@ -215,11 +262,15 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            const Color(0xFF2C3E50).withValues(alpha: 0.9),
-            const Color(0xFF34495E).withValues(alpha: 0.9),
+            const Color(0xFF1a1a2e).withValues(alpha: 0.9),
+            const Color(0xFF16213e).withValues(alpha: 0.9),
           ],
         ),
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: const Color(0xFF00f5ff).withValues(alpha: 0.3),
+          width: 2,
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.5),
@@ -241,7 +292,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                 end: Alignment.bottomCenter,
                 colors: [
                   Colors.transparent,
-                  Colors.white.withValues(alpha: 0.3),
+                  const Color(0xFF00f5ff).withValues(alpha: 0.5),
                   Colors.transparent,
                 ],
               ),
@@ -259,7 +310,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         Text(
           label,
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.7),
+            color: Colors.white.withValues(alpha: 0.8),
             fontSize: 16,
             fontWeight: FontWeight.w600,
             letterSpacing: 0.5,
@@ -275,11 +326,14 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: color,
-                border: Border.all(color: Colors.white54, width: 2),
+                border: Border.all(
+                  color: const Color(0xFF00f5ff).withValues(alpha: 0.5),
+                  width: 2,
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.3),
-                    blurRadius: 8,
+                    color: Colors.black.withValues(alpha: 0.5),
+                    blurRadius: 10,
                   ),
                 ],
               ),
@@ -312,15 +366,15 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  const Color(0xFFff6b6b),
-                  const Color(0xFFee5a6f),
+                  const Color(0xFFff006e),
+                  const Color(0xFFff4081),
                 ],
               ),
               borderRadius: BorderRadius.circular(25),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFFff6b6b).withValues(alpha: 0.5),
-                  blurRadius: 20,
+                  color: const Color(0xFFff006e).withValues(alpha: 0.6),
+                  blurRadius: 25,
                   offset: const Offset(0, 8),
                 ),
               ],
@@ -356,7 +410,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     final screenHeight = MediaQuery.of(context).size.height;
     final maxSize = screenWidth < screenHeight ? screenWidth : screenHeight * 0.6;
     final rawBoardSize = maxSize * 0.92;
-    const borderWidth = 6.0;
+    const borderWidth = 4.0;
     final innerSize = ((rawBoardSize - borderWidth * 2) ~/ 8) * 8.0;
     final boardSize = innerSize + borderWidth * 2;
     final cellSize = innerSize / 8;
@@ -365,26 +419,26 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       width: boardSize,
       height: boardSize,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: const Color(0xFF00d2ff),
+          color: const Color(0xFF00f5ff),
           width: borderWidth,
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF00d2ff).withValues(alpha: 0.5),
-            blurRadius: 30,
-            offset: const Offset(0, 10),
+            color: const Color(0xFF00f5ff).withValues(alpha: 0.6),
+            blurRadius: 35,
+            spreadRadius: 3,
           ),
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.7),
-            blurRadius: 20,
+            color: Colors.black.withValues(alpha: 0.8),
+            blurRadius: 25,
             offset: const Offset(0, 15),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(16),
         child: Stack(
           children: [
             // Клетки доски
@@ -410,83 +464,102 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
             final isAvailableMove = _gameState.availableMoves
                 .any((move) => move.to == position);
 
-            return DragTarget<Position>(
-              onWillAcceptWithDetails: (details) {
-                return isAvailableMove;
-              },
-              onAcceptWithDetails: (details) {
-                _handleDragEnd(details.data, position);
-              },
-              builder: (context, candidateData, rejectedData) {
-                final isHovered = candidateData.isNotEmpty;
+            return GestureDetector(
+              onTap: () => _handleCellTap(position),
+              child: AnimatedBuilder(
+                animation: _pulseAnimationController,
+                builder: (context, child) {
+                  final pulse = isAvailableMove
+                      ? _pulseAnimationController.value
+                      : 0.0;
 
-                return Container(
-                  width: cellSize,
-                  height: cellSize,
-                  decoration: BoxDecoration(
-                    gradient: isBlackCell
-                        ? (isSelected
-                            ? LinearGradient(
-                                colors: [
-                                  const Color(0xFF00d2ff),
-                                  const Color(0xFF3a7bd5),
-                                ],
-                              )
-                            : LinearGradient(
-                                colors: [
-                                  const Color(0xFF654321),
-                                  const Color(0xFF8B4513),
-                                ],
-                              ))
-                        : LinearGradient(
-                            colors: [
-                              const Color(0xFFf5deb3),
-                              const Color(0xFFdeb887),
-                            ],
-                          ),
-                    border: isAvailableMove
-                        ? Border.all(
-                            color: isHovered
-                                ? const Color(0xFF00ff88)
-                                : const Color(0xFF00ff88).withValues(alpha: 0.6),
-                            width: isHovered ? 4 : 3,
-                          )
-                        : null,
-                    boxShadow: isAvailableMove && isHovered
-                        ? [
-                            BoxShadow(
-                              color: const Color(0xFF00ff88).withValues(alpha: 0.5),
-                              blurRadius: 15,
-                              spreadRadius: 2,
-                            ),
-                          ]
-                        : null,
-                  ),
-                  child: isAvailableMove
-                      ? Center(
-                          child: Container(
-                            width: cellSize * 0.35,
-                            height: cellSize * 0.35,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: RadialGradient(
-                                colors: [
-                                  const Color(0xFF00ff88).withValues(alpha: 0.8),
-                                  const Color(0xFF00ff88).withValues(alpha: 0.3),
-                                ],
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(0xFF00ff88).withValues(alpha: 0.5),
-                                  blurRadius: 10,
-                                ),
+                  return Container(
+                    width: cellSize,
+                    height: cellSize,
+                    decoration: BoxDecoration(
+                      gradient: isBlackCell
+                          ? (isSelected
+                              ? LinearGradient(
+                                  colors: [
+                                    const Color(0xFF00f5ff),
+                                    const Color(0xFF00a8ff),
+                                  ],
+                                )
+                              : LinearGradient(
+                                  colors: [
+                                    const Color(0xFF1a1a1a),
+                                    const Color(0xFF2d2d2d),
+                                  ],
+                                ))
+                          : LinearGradient(
+                              colors: [
+                                const Color(0xFF3a3a3a),
+                                const Color(0xFF4d4d4d),
                               ],
                             ),
-                          ),
-                        )
-                      : null,
-                );
-              },
+                      border: isAvailableMove
+                          ? Border.all(
+                              color: Color.lerp(
+                                const Color(0xFF00ff88),
+                                const Color(0xFF00ffff),
+                                pulse,
+                              )!,
+                              width: 3 + pulse * 2,
+                            )
+                          : null,
+                      boxShadow: isAvailableMove
+                          ? [
+                              BoxShadow(
+                                color: Color.lerp(
+                                  const Color(0xFF00ff88),
+                                  const Color(0xFF00ffff),
+                                  pulse,
+                                )!.withValues(alpha: 0.6 + pulse * 0.3),
+                                blurRadius: 15 + pulse * 10,
+                                spreadRadius: 2 + pulse * 2,
+                              ),
+                            ]
+                          : null,
+                    ),
+                    child: isAvailableMove
+                        ? Center(
+                            child: Container(
+                              width: cellSize * (0.3 + pulse * 0.1),
+                              height: cellSize * (0.3 + pulse * 0.1),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: RadialGradient(
+                                  colors: [
+                                    Color.lerp(
+                                      const Color(0xFF00ff88),
+                                      const Color(0xFF00ffff),
+                                      pulse,
+                                    )!.withValues(alpha: 0.9),
+                                    Color.lerp(
+                                      const Color(0xFF00ff88),
+                                      const Color(0xFF00ffff),
+                                      pulse,
+                                    )!.withValues(alpha: 0.3),
+                                  ],
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Color.lerp(
+                                      const Color(0xFF00ff88),
+                                      const Color(0xFF00ffff),
+                                      pulse,
+                                    )!.withValues(alpha: 0.8),
+                                    blurRadius: 15 + pulse * 5,
+                                    spreadRadius: 1 + pulse,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        : null,
+                  );
+                },
+              ),
             );
           }),
         );
@@ -520,53 +593,42 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   Widget _buildPiece(Piece piece, double cellSize) {
     final canMove = _gameState.currentPlayer == piece.color &&
                     _gameState.winner == null;
+    final isSelected = _gameState.selectedPosition == piece.position;
 
     return Positioned(
       left: piece.position.col * cellSize,
       top: piece.position.row * cellSize,
-      child: canMove
-          ? Draggable<Position>(
-              data: piece.position,
-              onDragStarted: () => _handleDragStart(piece.position),
-              onDragEnd: (details) {
-                if (!details.wasAccepted) {
-                  setState(() {
-                    _gameState = _gameState.copyWith(
-                      clearSelectedPosition: true,
-                      availableMoves: [],
-                    );
-                  });
-                }
-              },
-              feedback: _buildPieceVisual(piece, cellSize, isDragging: true),
-              childWhenDragging: SizedBox(
-                width: cellSize,
-                height: cellSize,
-              ),
-              child: _buildPieceVisual(piece, cellSize),
-            )
-          : _buildPieceVisual(piece, cellSize),
+      child: GestureDetector(
+        onTap: canMove ? () => _handleCellTap(piece.position) : null,
+        child: AnimatedScale(
+          scale: isSelected ? 1.1 : 1.0,
+          duration: const Duration(milliseconds: 200),
+          child: _buildPieceVisual(piece, cellSize, isSelected: isSelected),
+        ),
+      ),
     );
   }
 
-  Widget _buildPieceVisual(Piece piece, double cellSize, {bool isDragging = false}) {
+  Widget _buildPieceVisual(Piece piece, double cellSize, {bool isSelected = false, bool isAnimating = false}) {
     return Container(
       width: cellSize,
       height: cellSize,
-      padding: EdgeInsets.all(cellSize * 0.12),
+      padding: EdgeInsets.all(cellSize * 0.1),
       child: Container(
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           gradient: RadialGradient(
-            center: const Alignment(-0.3, -0.3),
-            radius: 0.8,
+            center: const Alignment(-0.4, -0.4),
+            radius: 0.9,
             colors: piece.color == PieceColor.white
                 ? [
                     Colors.white,
-                    const Color(0xFFf0f0f0),
-                    const Color(0xFFd0d0d0),
+                    const Color(0xFFf5f5f5),
+                    const Color(0xFFe0e0e0),
+                    const Color(0xFFbdbdbd),
                   ]
                 : [
+                    const Color(0xFF424242),
                     const Color(0xFF2d2d2d),
                     const Color(0xFF1a1a1a),
                     Colors.black,
@@ -574,24 +636,22 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: isDragging ? 0.7 : 0.5),
-              blurRadius: isDragging ? 20 : 12,
-              offset: Offset(0, isDragging ? 8 : 6),
+              color: Colors.black.withValues(alpha: isAnimating ? 0.8 : 0.6),
+              blurRadius: isAnimating ? 25 : 15,
+              offset: Offset(0, isAnimating ? 10 : 6),
             ),
-            if (isDragging)
+            if (isSelected || isAnimating)
               BoxShadow(
-                color: (piece.color == PieceColor.white
-                    ? Colors.white
-                    : Colors.black).withValues(alpha: 0.5),
-                blurRadius: 25,
-                spreadRadius: 2,
+                color: const Color(0xFF00f5ff).withValues(alpha: 0.8),
+                blurRadius: 30,
+                spreadRadius: 3,
               ),
           ],
           border: Border.all(
             color: piece.color == PieceColor.white
-                ? Colors.white.withValues(alpha: 0.3)
-                : Colors.grey.shade800,
-            width: 2,
+                ? Colors.white.withValues(alpha: 0.5)
+                : const Color(0xFF555555),
+            width: 3,
           ),
         ),
         child: piece.isKing
@@ -602,7 +662,11 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                   size: cellSize * 0.5,
                   shadows: [
                     Shadow(
-                      color: Colors.black.withValues(alpha: 0.5),
+                      color: const Color(0xFFff8800).withValues(alpha: 0.8),
+                      blurRadius: 15,
+                    ),
+                    Shadow(
+                      color: Colors.black.withValues(alpha: 0.6),
                       blurRadius: 8,
                     ),
                   ],
@@ -615,9 +679,10 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
 
   Widget _buildAnimatedPiece(Piece piece, double cellSize) {
     return AnimatedBuilder(
-      animation: _animationController,
+      animation: _moveAnimationController,
       builder: (context, child) {
-        final t = Curves.easeInOut.transform(_animationController.value);
+        // Используем более плавную кривую с bounce эффектом
+        final t = Curves.easeOutCubic.transform(_moveAnimationController.value);
         final fromCol = _animatingFrom!.col;
         final fromRow = _animatingFrom!.row;
         final toCol = _animatingTo!.col;
@@ -626,10 +691,16 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         final currentCol = fromCol + (toCol - fromCol) * t;
         final currentRow = fromRow + (toRow - fromRow) * t;
 
+        // Добавляем небольшой подъем в середине движения (параболическая траектория)
+        final lift = (1 - (2 * t - 1) * (2 * t - 1)) * 0.3;
+
         return Positioned(
           left: currentCol * cellSize,
-          top: currentRow * cellSize,
-          child: _buildPieceVisual(piece, cellSize, isDragging: true),
+          top: currentRow * cellSize - lift * cellSize,
+          child: Transform.scale(
+            scale: 1.0 + lift * 0.3,
+            child: _buildPieceVisual(piece, cellSize, isAnimating: true),
+          ),
         );
       },
     );
@@ -638,7 +709,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   Widget _buildWinnerOverlay() {
     return Positioned.fill(
       child: Container(
-        color: Colors.black.withValues(alpha: 0.85),
+        color: Colors.black.withValues(alpha: 0.9),
         child: Center(
           child: Container(
             margin: const EdgeInsets.all(32),
@@ -648,16 +719,17 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  const Color(0xFF00d2ff),
-                  const Color(0xFF3a7bd5),
+                  const Color(0xFF00f5ff),
+                  const Color(0xFF00a8ff),
+                  const Color(0xFF0066ff),
                 ],
               ),
               borderRadius: BorderRadius.circular(30),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF00d2ff).withValues(alpha: 0.6),
-                  blurRadius: 40,
-                  spreadRadius: 5,
+                  color: const Color(0xFF00f5ff).withValues(alpha: 0.8),
+                  blurRadius: 50,
+                  spreadRadius: 8,
                 ),
               ],
             ),
@@ -665,10 +737,17 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: Colors.white.withValues(alpha: 0.2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.white.withValues(alpha: 0.3),
+                        blurRadius: 30,
+                        spreadRadius: 5,
+                      ),
+                    ],
                   ),
                   child: const Icon(
                     Icons.emoji_events_rounded,
@@ -676,56 +755,65 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                     size: 80,
                     shadows: [
                       Shadow(
-                        color: Colors.black26,
-                        blurRadius: 10,
+                        color: Color(0xFFff8800),
+                        blurRadius: 20,
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 28),
                 const Text(
-                  'Победа!',
+                  'ПОБЕДА!',
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: 36,
+                    fontSize: 42,
                     fontWeight: FontWeight.bold,
-                    letterSpacing: 1.5,
+                    letterSpacing: 3,
+                    shadows: [
+                      Shadow(
+                        color: Colors.black45,
+                        blurRadius: 15,
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 Text(
                   'Победили ${_gameState.winner}!',
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 24,
+                    fontSize: 26,
                     fontWeight: FontWeight.w600,
+                    letterSpacing: 1,
                   ),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 36),
                 ElevatedButton(
                   onPressed: _resetGame,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
-                    foregroundColor: const Color(0xFF3a7bd5),
+                    foregroundColor: const Color(0xFF0066ff),
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 48,
-                      vertical: 20,
+                      horizontal: 56,
+                      vertical: 22,
                     ),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(25),
                     ),
-                    elevation: 8,
+                    elevation: 15,
+                    shadowColor: Colors.white.withValues(alpha: 0.5),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: const [
-                      Icon(Icons.refresh_rounded, size: 28),
-                      SizedBox(width: 12),
+                      Icon(Icons.refresh_rounded, size: 32),
+                      SizedBox(width: 14),
                       Text(
                         'Новая игра',
                         style: TextStyle(
-                          fontSize: 20,
+                          fontSize: 22,
                           fontWeight: FontWeight.bold,
+                          letterSpacing: 0.5,
                         ),
                       ),
                     ],
