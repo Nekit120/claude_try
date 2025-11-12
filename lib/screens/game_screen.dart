@@ -617,16 +617,19 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     return Positioned(
       left: piece.position.col * cellSize,
       top: piece.position.row * cellSize,
-      child: GestureDetector(
-        onTap: canMove ? () => _handleCellTap(piece.position) : null,
-        child: AnimatedScale(
-          scale: isSelected ? 1.1 : 1.0,
-          duration: const Duration(milliseconds: 200),
-          child: _buildPieceVisual(
-            piece,
-            cellSize,
-            isSelected: isSelected,
-            isBlocked: isBlocked,
+      child: IgnorePointer(
+        ignoring: isBlocked,
+        child: GestureDetector(
+          onTap: canMove ? () => _handleCellTap(piece.position) : null,
+          child: AnimatedScale(
+            scale: isSelected ? 1.1 : 1.0,
+            duration: const Duration(milliseconds: 200),
+            child: _buildPieceVisual(
+              piece,
+              cellSize,
+              isSelected: isSelected,
+              isBlocked: isBlocked,
+            ),
           ),
         ),
       ),
